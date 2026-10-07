@@ -7,6 +7,7 @@ async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
 }
 const bridge: Bridge = {
   getInitial: () => invoke('lt:initial'),
+  getDiagnostics: () => invoke('lt:diagnostics'),
   translate: request => invoke('lt:translate', request),
   cancel: id => invoke('lt:cancel', id),
   onChunk(listener) { const receive = (_event: Electron.IpcRendererEvent, chunk: TranslationChunk) => listener(chunk); ipcRenderer.on('lt:chunk', receive); return () => ipcRenderer.removeListener('lt:chunk', receive); },

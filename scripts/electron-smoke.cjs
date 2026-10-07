@@ -147,7 +147,7 @@ async function main() {
     assert.deepEqual(Object.keys(data.profile).sort(), ['configured', 'model', 'provider']);
     assert.equal(data.profile.provider, '演示服务', 'Demo must use its synthetic profile');
     const bridge = await manual.evaluate(() => ({ keys: Object.keys(window.lightTranslate).sort(), nodeAvailable: typeof window.require !== 'undefined' || typeof window.process !== 'undefined' }));
-    assert.deepEqual(bridge.keys, ['cancel', 'close', 'copy', 'getInitial', 'minimize', 'onChunk', 'openTranslation', 'reimportProfile', 'saveLanguages', 'setOpacity', 'setPinned', 'translate', 'translateSelection'].sort());
+    assert.deepEqual(bridge.keys, ['cancel', 'close', 'copy', 'getDiagnostics', 'getInitial', 'minimize', 'onChunk', 'openTranslation', 'reimportProfile', 'saveLanguages', 'setOpacity', 'setPinned', 'translate', 'translateSelection'].sort());
     assert.equal(bridge.nodeAvailable, false);
     const state = await nativeState(manual);
     assert.equal(state.preferences.nodeIntegration, false);

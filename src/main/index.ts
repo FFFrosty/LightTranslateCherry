@@ -4,10 +4,10 @@ import type { SelectionHookInstance, SelectionHookConstructor, TextSelectionData
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { InitialState, Preferences, TranslateRequest } from '../shared/api';
+import type { AppDiagnostics, InitialState, Preferences, TranslateRequest } from '../shared/api';
 import { TOOLBAR_METRICS } from '../shared/windowMetrics';
 import { ProfileStore } from './profile';
-import { translate, validLanguage } from './translation';
+import { translate, TranslationDiagnostics, TranslationError, validLanguage } from './translation';
 import { fitBounds, replaceableResults } from './windowPolicy';
 import { copyEdgeSelection, probeEdgeSource } from './selectionCopy';
 import type { EdgeSource } from './selectionCopy';
@@ -29,6 +29,7 @@ function savePreferences() { try { writeFileSync(prefsFile, JSON.stringify({ ...
 type Managed = { window: BrowserWindow; state: Pick<InitialState, 'kind' | 'text'>; pinned: boolean; edgeSource?: Promise<EdgeSource | null>; request?: { id: string; controller: AbortController }; timer?: ReturnType<typeof setTimeout> };
 const windows = new Map<number, Managed>();
 let profile: ProfileStore;
+const translationDiagnostics = new TranslationDiagnostics();
 let tray: Tray | undefined;
 let hook: SelectionHookInstance | null = null;
 let paused = false;
@@ -160,6 +161,7 @@ function checkedId(value: unknown): string { if (typeof value !== 'string' || !/
 function bind(channel: string, callback: (entry: Managed, ...args: any[]) => unknown) { ipcMain.handle(channel, (event, ...args) => callback(sender(event), ...args)); }
 function setupIpc() {
   bind('lt:initial', entry => ({ ...entry.state, preferences, profile: demo ? { provider: '演示服务', model: 'Demo · 离线预览', configured: true } : profile.public }));
+  bind('lt:diagnostics', (): AppDiagnostics => ({ version: app.getVersion(), pid: process.pid, executable: process.execPath, userData: app.getPath('userData'), demo, profile: profile.diagnostics, latestRequest: translationDiagnostics.snapshot }));
   bind('lt:open', (_entry, text) => openResult(checkedText(text)));
   bind('lt:selection', async entry => {
     if (entry.state.kind !== 'toolbar' || toolbar !== entry.window || !entry.window.isVisible()) throw new Error('请重新划词后发起翻译。');
@@ -195,8 +197,17 @@ function setupIpc() {
         for (let index = 0; index < output.length; index += 4) { await new Promise(resolve => setTimeout(resolve, 45)); if (controller.signal.aborted) throw new Error('翻译已取消。'); emit(output.slice(0, index + 4)); }
         return output;
       }
-      if (!profile.secret) throw new Error('尚未导入配置。请点击“重新导入”，从旧版安全配置恢复。');
-      return await translate(profile.secret, text, input.target, controller.signal, emit);
+      const requestProfile = profile.secret;
+      if (!requestProfile) throw new Error('尚未导入配置。请点击“重新导入”，从旧版安全配置恢复。');
+      const diagnosticGeneration = translationDiagnostics.begin(requestProfile);
+      try {
+        const output = await translate(requestProfile, text, input.target, controller.signal, emit, fetch, status => translationDiagnostics.recordHttpStatus(diagnosticGeneration, status));
+        translationDiagnostics.finish(diagnosticGeneration, 'succeeded');
+        return output;
+      } catch (error) {
+        translationDiagnostics.finish(diagnosticGeneration, 'failed', error instanceof TranslationError ? error.httpStatus : undefined);
+        throw error;
+      }
     } finally { clearTimeout(timeout); if (entry.request === request) entry.request = undefined; }
   });
 }

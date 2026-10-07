@@ -15,7 +15,7 @@ describe('safe IPC error presentation', () => {
     expect(stripIpcErrorPrefix("说明中提到 Error invoking remote method 'lt:copy': Error: X")).toBe("说明中提到 Error invoking remote method 'lt:copy': Error: X");
   });
   const calls: Array<[string, () => Promise<unknown>]> = [
-    ['initial', () => bridge.getInitial()], ['translate', () => bridge.translate({ id: 'req', text: 'text', target: 'en-us' })],
+    ['initial', () => bridge.getInitial()], ['diagnostics', () => bridge.getDiagnostics()], ['translate', () => bridge.translate({ id: 'req', text: 'text', target: 'en-us' })],
     ['cancel', () => bridge.cancel('req')], ['open', () => bridge.openTranslation('text')], ['selection', () => bridge.translateSelection()],
     ['pin', () => bridge.setPinned(true)], ['opacity', () => bridge.setOpacity(0.8)], ['minimize', () => bridge.minimize()],
     ['close', () => bridge.close()], ['copy', () => bridge.copy('text')], ['reimport', () => bridge.reimportProfile()],
