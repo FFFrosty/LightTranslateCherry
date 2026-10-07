@@ -15,6 +15,26 @@ describe('translation protocol', () => {
     expect(await translate(profile, 'text', 'en-us', new AbortController().signal, () => {}, fetcher)).toBe('OK');
     expect(fetcher).toHaveBeenCalledWith('https://example.invalid/v1/chat/completions', expect.objectContaining({ redirect: 'error' }));
   });
+  it.each([
+    ['https://api.deepseek.com', true],
+    ['https://API.DEEPSEEK.COM/v1/', true],
+    ['https://api.deepseek.com/chat/completions', true],
+    ['https://api.siliconflow.cn/v1', false],
+    ['https://api.deepseek.com.example.invalid/v1', false],
+  ])('uses non-thinking translation only for the official DeepSeek host: %s', async (baseUrl, official) => {
+    const fetcher = vi.fn(async (_url: unknown, _options: RequestInit | undefined) => sseResponse(['data: {"choices":[{"delta":{"content":"译文"}}]}\n\ndata: [DONE]\n\n']));
+    const onText = vi.fn();
+    const result = await translate({ ...profile, provider: 'DeepSeek', model: 'deepseek-v4-flash', baseUrl }, 'text', 'zh-cn', new AbortController().signal, onText, fetcher as typeof fetch);
+    const body = JSON.parse(fetcher.mock.calls[0][1]!.body as string);
+    if (official) expect(body.thinking).toEqual({ type: 'disabled' });
+    else expect(body).not.toHaveProperty('thinking');
+    expect(body.model).toBe('deepseek-v4-flash');
+    expect(body.stream).toBe(true);
+    expect(body.messages[1]).toEqual({ role: 'user', content: 'text' });
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(onText).toHaveBeenCalledWith('译文');
+    expect(result).toBe('译文');
+  });
   it('handles JSON fallback', async () => {
     const chunk = vi.fn(); const fetcher = vi.fn(async () => Response.json({ choices: [{ message: { content: '译文' } }] })) as unknown as typeof fetch;
     expect(await translate(profile, 'text', 'zh-cn', new AbortController().signal, chunk, fetcher)).toBe('译文'); expect(chunk).toHaveBeenCalledWith('译文');
