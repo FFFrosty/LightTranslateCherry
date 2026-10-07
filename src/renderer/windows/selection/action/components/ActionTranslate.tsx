@@ -73,7 +73,7 @@ export default function ActionTranslate({ initial, profile, scrollToBottom }: Pr
     if (!text.trim()) { setIsStreaming(false); return }
     if (!profileRef.current?.configured) {
       setIsStreaming(false)
-      setCompletionError('尚未配置翻译模型。请在主窗口重新导入旧版轻译已保存的配置。')
+      setCompletionError('尚未配置翻译模型。请在主窗口打开“模型设置”。')
       return
     }
     const id = crypto.randomUUID()

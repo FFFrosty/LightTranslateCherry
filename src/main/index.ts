@@ -6,7 +6,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { AppDiagnostics, InitialState, Preferences, TranslateRequest } from '../shared/api';
 import { TOOLBAR_METRICS } from '../shared/windowMetrics';
-import { ProfileStore } from './profile';
+import { ProfileMutationGate, ProfileStore } from './profile';
 import { translate, TranslationDiagnostics, TranslationError, validLanguage } from './translation';
 import { fitBounds, replaceableResults } from './windowPolicy';
 import { copyEdgeSelection, probeEdgeSource } from './selectionCopy';
@@ -29,6 +29,7 @@ function savePreferences() { try { writeFileSync(prefsFile, JSON.stringify({ ...
 type Managed = { window: BrowserWindow; state: Pick<InitialState, 'kind' | 'text'>; pinned: boolean; edgeSource?: Promise<EdgeSource | null>; request?: { id: string; controller: AbortController }; timer?: ReturnType<typeof setTimeout> };
 const windows = new Map<number, Managed>();
 let profile: ProfileStore;
+const profileMutation = new ProfileMutationGate();
 const translationDiagnostics = new TranslationDiagnostics();
 let tray: Tray | undefined;
 let hook: SelectionHookInstance | null = null;
@@ -160,8 +161,21 @@ function checkedText(value: unknown, max = 12000): string { if (typeof value !==
 function checkedId(value: unknown): string { if (typeof value !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(value)) throw new Error('请求编号无效。'); return value; }
 function bind(channel: string, callback: (entry: Managed, ...args: any[]) => unknown) { ipcMain.handle(channel, (event, ...args) => callback(sender(event), ...args)); }
 function setupIpc() {
-  bind('lt:initial', entry => ({ ...entry.state, preferences, profile: demo ? { provider: '演示服务', model: 'Demo · 离线预览', configured: true } : profile.public }));
+  bind('lt:initial', entry => ({ ...entry.state, preferences, profile: demo ? { provider: '演示服务', model: 'Demo · 离线预览', configured: true } : profile.public, ...(!demo && profile.error ? { profileError: profile.error } : {}) }));
   bind('lt:diagnostics', (): AppDiagnostics => ({ version: app.getVersion(), pid: process.pid, executable: process.execPath, userData: app.getPath('userData'), demo, profile: profile.diagnostics, latestRequest: translationDiagnostics.snapshot }));
+  bind('lt:modelsettings', entry => { if (entry.state.kind !== 'manual') throw new Error('请在主窗口打开模型设置。'); return profile.settings; });
+  bind('lt:savemodelsettings', (entry, input) => { if (entry.state.kind !== 'manual') throw new Error('请在主窗口保存模型设置。'); return profileMutation.run(() => profile.saveSettings(input)); });
+  bind('lt:importprofilefile', async entry => {
+    if (demo) throw new Error('演示模式不导入真实配置，请在正式程序中操作。');
+    if (entry.state.kind !== 'manual') throw new Error('请在主窗口导入模型配置。');
+    return profileMutation.run(async () => {
+      let selected;
+      try { selected = await dialog.showOpenDialog(entry.window, { title: '导入已有加密模型配置', properties: ['openFile'], filters: [{ name: '加密配置文件', extensions: ['bin'] }] }); }
+      catch { throw new Error('无法打开配置文件选择器，请重试。'); }
+      if (entry.window.isDestroyed() || selected.canceled || !selected.filePaths[0]) return null;
+      return profile.importProfileFile(selected.filePaths[0]);
+    });
+  });
   bind('lt:open', (_entry, text) => openResult(checkedText(text)));
   bind('lt:selection', async entry => {
     if (entry.state.kind !== 'toolbar' || toolbar !== entry.window || !entry.window.isVisible()) throw new Error('请重新划词后发起翻译。');
@@ -179,7 +193,7 @@ function setupIpc() {
   bind('lt:minimize', entry => entry.window.minimize());
   bind('lt:close', entry => entry.window.close());
   bind('lt:copy', (_entry, text) => clipboard.writeText(checkedText(text, 200000)));
-  bind('lt:reimport', () => demo ? { provider: '演示服务', model: 'Demo · 离线预览', configured: true } : profile.reimport());
+  bind('lt:reimport', entry => { if (entry.state.kind !== 'manual') throw new Error('请在主窗口重新导入配置。'); return profileMutation.run(() => demo ? { provider: '演示服务', model: 'Demo · 离线预览', configured: true } : profile.reimport()); });
   bind('lt:languages', (_entry, value) => { if (!value || !validLanguage(value.primary) || !validLanguage(value.alternate)) throw new Error('语言设置无效。'); preferences = { primary: value.primary, alternate: value.alternate }; savePreferences(); });
   bind('lt:cancel', (entry, id) => { if (entry.request?.id === checkedId(id)) cancelRequest(entry); });
   bind('lt:translate', async (entry, input: TranslateRequest) => {
@@ -198,7 +212,7 @@ function setupIpc() {
         return output;
       }
       const requestProfile = profile.secret;
-      if (!requestProfile) throw new Error('尚未导入配置。请点击“重新导入”，从旧版安全配置恢复。');
+      if (!requestProfile) throw new Error('尚未配置翻译模型。请在主窗口打开“模型设置”，保存配置或导入已有加密配置文件。');
       const diagnosticGeneration = translationDiagnostics.begin(requestProfile);
       try {
         const output = await translate(requestProfile, text, input.target, controller.signal, emit, fetch, status => translationDiagnostics.recordHttpStatus(diagnosticGeneration, status));
@@ -221,7 +235,7 @@ else {
     session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     session.defaultSession.setPermissionCheckHandler(() => false);
     profile = new ProfileStore();
-    if (!demo) { try { await profile.initialize(); } catch { /* The manual panel offers a safe, explicit reimport error. */ } }
+    if (!demo) { try { await profile.initialize(); } catch { /* InitialState exposes the safe load error without modifying the original file. */ } }
     if (quitting) return;
     setupIpc();
     ready = true;

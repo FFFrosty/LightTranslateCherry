@@ -16,6 +16,7 @@ describe('safe IPC error presentation', () => {
   });
   const calls: Array<[string, () => Promise<unknown>]> = [
     ['initial', () => bridge.getInitial()], ['diagnostics', () => bridge.getDiagnostics()], ['translate', () => bridge.translate({ id: 'req', text: 'text', target: 'en-us' })],
+    ['modelsettings', () => bridge.getModelSettings()], ['savemodelsettings', () => bridge.saveModelSettings({ provider: 'fixture', model: 'fixture', baseUrl: 'https://fixture.invalid', apiKey: 'fake' })], ['importprofilefile', () => bridge.importProfileFile()],
     ['cancel', () => bridge.cancel('req')], ['open', () => bridge.openTranslation('text')], ['selection', () => bridge.translateSelection()],
     ['pin', () => bridge.setPinned(true)], ['opacity', () => bridge.setOpacity(0.8)], ['minimize', () => bridge.minimize()],
     ['close', () => bridge.close()], ['copy', () => bridge.copy('text')], ['reimport', () => bridge.reimportProfile()],

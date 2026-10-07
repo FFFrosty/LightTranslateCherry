@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ButtonHTMLAttributes } from 'react'
 import type { AppDiagnostics, InitialState, PublicProfile } from '../../../../shared/api'
 import ActionTranslate from './components/ActionTranslate'
+import ModelSettingsPanel from './components/ModelSettingsPanel'
 import AppLogo from '../../../../../assets/logo.svg'
 
 export default function ActionWindow({ initial }: { initial: InitialState }) {
@@ -20,7 +21,8 @@ export default function ActionWindow({ initial }: { initial: InitialState }) {
   const [opacity, setOpacity] = useState(100)
   const [windowError, setWindowError] = useState('')
   const [profile, setProfile] = useState<PublicProfile | null>(initial.profile)
-  const [importing, setImporting] = useState(false)
+  const [showModelSettings, setShowModelSettings] = useState(false)
+  const [profileError, setProfileError] = useState(initial.profileError ?? '')
   const [showDiagnostics, setShowDiagnostics] = useState(false)
   const [diagnostics, setDiagnostics] = useState<AppDiagnostics | null>(null)
   const [diagnosticsError, setDiagnosticsError] = useState('')
@@ -82,12 +84,10 @@ export default function ActionWindow({ initial }: { initial: InitialState }) {
     try { await window.lightTranslate.setOpacity(next / 100) }
     catch { setWindowError('无法调整窗口透明度。') }
   }
-  async function reimport() {
-    setImporting(true)
-    setWindowError('')
-    try { setProfile(await window.lightTranslate.reimportProfile()); if (showDiagnostics) await refreshDiagnostics() }
-    catch (error) { setWindowError(error instanceof Error ? error.message : '配置导入失败。') }
-    finally { setImporting(false) }
+  function handleConfigured(next: PublicProfile) {
+    setProfile(next)
+    setProfileError('')
+    void refreshDiagnostics()
   }
   return (
     <div data-ui="selection.action" className="action-window">
@@ -103,8 +103,10 @@ export default function ActionWindow({ initial }: { initial: InitialState }) {
         </div>
       </header>
       {windowError && <div className="window-error" role="alert">{windowError}</div>}
-      {initial.kind === 'manual' && <div className="profile-bar"><span title={profile ? `${profile.provider} · ${profile.model}` : ''}>{profile?.configured ? `${profile.provider} · ${profile.model}` : '尚未配置翻译模型'}</span><button aria-expanded={showDiagnostics} aria-controls="configuration-diagnostics" onClick={() => setShowDiagnostics(!showDiagnostics)}>配置诊断</button><button disabled={importing} onClick={() => void reimport()}>{importing ? '正在导入…' : '重新导入配置'}</button></div>}
+      {initial.kind === 'manual' && <div className="profile-bar"><span title={profile ? `${profile.provider} · ${profile.model}` : ''}>{profile?.configured ? `${profile.provider} · ${profile.model}` : '尚未配置翻译模型'}</span><button aria-expanded={showDiagnostics} aria-controls="configuration-diagnostics" onClick={() => setShowDiagnostics(!showDiagnostics)}>配置诊断</button><button aria-expanded={showModelSettings} aria-controls="model-settings" onClick={() => setShowModelSettings(!showModelSettings)}>模型设置</button></div>}
+      {initial.kind === 'manual' && !profile?.configured && profileError && <div className="window-error" role="alert">{profileError}</div>}
       <div ref={contentElementRef} onScroll={handleUserScroll} className="window-content">
+        {initial.kind === 'manual' && showModelSettings && <ModelSettingsPanel onConfigured={handleConfigured} onClose={() => setShowModelSettings(false)} />}
         {initial.kind === 'manual' && showDiagnostics && <section id="configuration-diagnostics" className="diagnostics-panel" aria-label="配置诊断" aria-busy={diagnosticsLoading}>
           <div className="diagnostics-heading"><strong>当前运行进程</strong><button onClick={() => void refreshDiagnostics()} disabled={diagnosticsLoading}>{diagnosticsLoading ? '正在刷新…' : '刷新诊断'}</button></div>
           <p>实时读取本实例内存；仅显示配置来源与请求状态。</p>

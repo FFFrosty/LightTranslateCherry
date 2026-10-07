@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import path from 'node:path';
 const mocks = vi.hoisted(() => ({ exists: vi.fn(), read: vi.fn(), write: vi.fn(), stat: vi.fn(), decrypt: vi.fn(), encrypt: vi.fn(), exec: vi.fn() }));
 vi.mock('electron', () => ({ app: { getPath: () => 'C:\\fixture\\live-user-data' }, safeStorage: { decryptString: mocks.decrypt, encryptString: mocks.encrypt, isEncryptionAvailable: () => true } }));
-vi.mock('node:fs', () => ({ existsSync: mocks.exists, readFileSync: mocks.read, writeFileSync: mocks.write, statSync: mocks.stat }));
+vi.mock('node:fs', () => ({ constants: { COPYFILE_EXCL: 1 }, copyFileSync: vi.fn(), renameSync: vi.fn(), unlinkSync: vi.fn(), existsSync: mocks.exists, readFileSync: mocks.read, writeFileSync: mocks.write, statSync: mocks.stat }));
 vi.mock('node:child_process', () => ({ execFile: mocks.exec }));
 import { ProfileStore } from '../src/main/profile';
 import { translate, TranslationDiagnostics, TranslationError } from '../src/main/translation';
@@ -47,12 +47,15 @@ describe('live profile diagnostics', () => {
     expect(store.diagnostics).toMatchObject({ source: 'legacy', sourceSize: 456, sourceModifiedAt: '2026-10-07T01:02:03.000Z', provider: legacy.provider, model: legacy.model, host: 'legacy.example.invalid' });
     expect(JSON.stringify(store.diagnostics)).not.toContain(legacy.apiKey);
   });
-  it.each(['missing', 'unreadable'] as const)('keeps only the %s local-load enum when falling back to legacy', async reason => {
+  it.each(['missing', 'unreadable'] as const)('reports %s without automatic import or any write', async reason => {
     if (reason === 'missing') mocks.exists.mockImplementation(file => !String(file).endsWith('profile.enc'));
     else mocks.decrypt.mockImplementation(() => { throw new Error('private decryption exception and secret'); });
     const store = new ProfileStore();
-    await store.initialize();
-    expect(store.diagnostics).toMatchObject({ localLoadFailure: reason, source: 'legacy', provider: legacy.provider });
+    await expect(store.initialize()).rejects.toThrow('模型设置');
+    expect(store.diagnostics).toMatchObject({ localLoadFailure: reason, source: null, provider: null });
+    expect(store.secret).toBeNull();
+    expect(mocks.exec).not.toHaveBeenCalled();
+    expect(mocks.write).not.toHaveBeenCalled();
     expect(JSON.stringify(store.diagnostics)).not.toContain('private decryption');
   });
   it('does not replace a successful load when a later legacy import fails', async () => {

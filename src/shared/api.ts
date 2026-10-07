@@ -1,9 +1,12 @@
 export interface PublicProfile { provider: string; model: string; configured: boolean }
+export interface ModelSettings { provider: string; model: string; baseUrl: string; hasApiKey: boolean }
+export interface SaveModelSettings { provider: string; model: string; baseUrl: string; apiKey?: string }
 export interface Preferences { primary: string; alternate: string }
 export interface InitialState {
   kind: 'result' | 'toolbar' | 'manual';
   text: string;
   profile: PublicProfile | null;
+  profileError?: string;
   preferences: Preferences;
 }
 export interface TranslateRequest { id: string; text: string; target: string }
@@ -41,6 +44,9 @@ export interface AppDiagnostics {
 export interface Bridge {
   getInitial(): Promise<InitialState>;
   getDiagnostics(): Promise<AppDiagnostics>;
+  getModelSettings(): Promise<ModelSettings | null>;
+  saveModelSettings(input: SaveModelSettings): Promise<PublicProfile>;
+  importProfileFile(): Promise<PublicProfile | null>;
   translate(request: TranslateRequest): Promise<string>;
   cancel(id: string): Promise<void>;
   onChunk(listener: (chunk: TranslationChunk) => void): () => void;

@@ -76,6 +76,19 @@ select { min-width: 90px; max-width: 160px; height: 28px; border: 1px solid var(
 .profile-bar { display: flex; align-items: center; gap: 8px; padding: 10px 16px 0; font-size: 12px; flex-shrink: 0; }
 .profile-bar span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--subtle); }
 .profile-bar button { background: var(--muted); border-radius: 4px; padding: 5px 7px; font-size: 12px; flex-shrink: 0; }
+.model-settings-panel { flex-shrink: 0; min-width: 0; margin-bottom: 16px; padding: 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.model-settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.model-settings-heading button, .model-import-actions button { padding: 5px 8px; border-radius: 4px; background: var(--surface); }
+.model-settings-description, .model-key-hint, .model-import-actions p { color: var(--subtle); margin: 7px 0 10px; }
+.model-settings-panel fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.model-settings-field { display: flex; flex-direction: column; gap: 4px; margin-top: 9px; min-width: 0; }
+.model-settings-field input, .model-settings-field select { width: 100%; min-width: 0; max-width: none; height: 32px; padding: 5px 7px; border: 1px solid var(--border); border-radius: 4px; color: inherit; background: var(--surface); font-size: 12px; }
+.model-settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 0 10px; }
+.model-settings-save { display: flex; justify-content: flex-end; margin-top: 10px; }
+.model-import-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.model-import-actions p { flex-basis: 100%; margin: 0; }
+.model-settings-error { margin-top: 10px; padding: 8px; border: 1px solid #f3d1d1; border-radius: 4px; background: #fff0f0; color: #aa3535; }
+.model-settings-notice { margin-top: 10px; color: var(--primary); }
 .diagnostics-panel { flex-shrink: 0; min-width: 0; margin-bottom: 16px; padding: 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .diagnostics-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .diagnostics-heading button { flex-shrink: 0; padding: 4px 8px; border-radius: 4px; background: var(--surface); }
