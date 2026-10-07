@@ -96,6 +96,21 @@ async function assertVisibleAndFocused(page) {
   return nativeState(page);
 }
 
+async function assertNativePinned(page, expected) {
+  const started = Date.now();
+  const evidence = { expected, timeoutMs: 5000, samples: [] };
+  (report.nativePinChecks ||= []).push(evidence);
+  // Verify native state independently of the renderer's IPC acknowledgement.
+  // Record a bounded observation window so a lasting native failure cannot be
+  // mistaken for a short notification delay or replaced by the button's state.
+  await expect.poll(async () => {
+    const state = await nativeState(page);
+    evidence.samples.push({ elapsedMs: Date.now() - started, windowId: state.id, pinned: state.pinned });
+    return state.pinned;
+  }, { timeout: evidence.timeoutMs, intervals: [25, 50, 100, 200], message: `Native always-on-top must become ${expected}` }).toBe(expected);
+  return evidence;
+}
+
 async function assertNoHorizontalOverflow(page) {
   const metrics = await page.evaluate(() => {
     const containers = [document.documentElement, document.body, ...document.querySelectorAll('.action-window, .window-content, .translation-body, .translation-result, .language-settings, .window-footer')];
@@ -163,13 +178,13 @@ async function main() {
   await check('pin retains original window and sets native always-on-top', async () => {
     await first.getByRole('button', { name: '置顶窗口', exact: true }).click();
     await expect(first.getByRole('button', { name: '取消置顶', exact: true })).toHaveAttribute('aria-pressed', 'true');
-    assert.equal((await nativeState(first)).pinned, true);
+    await assertNativePinned(first, true);
     second = await submit(manual, secondText);
     await assertVisibleAndFocused(second);
     assert.equal(first.isClosed(), false);
     assert.equal((await initial(first)).text, firstText);
     assert.equal(await first.locator('.translation-result').innerText(), firstContent);
-    assert.equal((await nativeState(first)).pinned, true);
+    await assertNativePinned(first, true);
     await completed(second);
     await screenshot(first, '02-pinned');
   });
@@ -233,6 +248,28 @@ async function main() {
     await completed(third);
     await screenshot(third, '06-surviving-result');
     assert.equal(manual.isClosed(), false);
+  });
+
+  // All translation-behavior checks have finished. Replace only this isolated
+  // demo instance's handler to exercise Electron's real error serialization.
+  await check('real preload bridge removes the Electron HTTP 402 error prefix', async () => {
+    const safeMessage = '翻译服务拒绝了付费请求（HTTP 402），请检查该服务账户的余额或配额。';
+    await app.evaluate(({ ipcMain }, message) => {
+      ipcMain.removeHandler('lt:translate');
+      ipcMain.handle('lt:translate', () => { throw new Error(message); });
+    }, safeMessage);
+    const result = await third.evaluate(async () => {
+      try {
+        await window.lightTranslate.translate({ id: 'smoke-http-402', text: 'Fixed offline regression text.', target: 'en-us' });
+        return { rejected: false, message: '' };
+      } catch (error) {
+        return { rejected: true, message: error && typeof error.message === 'string' ? error.message : String(error) };
+      }
+    });
+    assert.equal(result.rejected, true, 'The renderer bridge must reject the mocked HTTP 402 failure');
+    assert.equal(result.message, safeMessage, 'The actual preload bridge must preserve only the safe application message');
+    assert.ok(!result.message.includes('Error invoking remote method'), 'Electron transport details must not reach the renderer message');
+    return result;
   });
 
   await check('renderer stays local and reports no uncaught errors', async () => {

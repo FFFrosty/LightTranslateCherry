@@ -50,6 +50,13 @@ describe('translation protocol', () => {
     let failure = ''; try { await translate(profile, 'text', 'zh-cn', new AbortController().signal, () => {}, fetcher); } catch (error) { failure = (error as Error).message; }
     expect(failure).not.toContain('fake-test-secret'); expect(failure).not.toContain('upstream'); expect(failure.length).toBeGreaterThan(5);
   });
+  it('describes HTTP 402 without asserting a confirmed account balance or exposing its body', async () => {
+    const response = new Response('upstream-private-detail fake-test-secret', { status: 402 });
+    const read = vi.spyOn(response, 'text');
+    const fetcher = vi.fn(async () => response) as unknown as typeof fetch;
+    await expect(translate(profile, 'text', 'zh-cn', new AbortController().signal, () => {}, fetcher)).rejects.toThrow('翻译服务拒绝了付费请求（HTTP 402），请检查该服务账户的余额或配额。');
+    expect(read).not.toHaveBeenCalled();
+  });
   it('does not issue a request after cancellation', async () => {
     const controller = new AbortController(); controller.abort(); const fetcher = vi.fn();
     await expect(translate(profile, 'text', 'en-us', controller.signal, () => {}, fetcher)).rejects.toThrow('翻译已取消'); expect(fetcher).not.toHaveBeenCalled();
