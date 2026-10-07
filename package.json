@@ -1,0 +1,86 @@
+{
+  "name": "lighttranslate-cherry",
+  "version": "0.1.0",
+  "description": "Independent selection translator adapted from Cherry Studio",
+  "author": "LightTranslate contributors",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "main": "dist/main/index.cjs",
+  "scripts": {
+    "runtime": "node scripts/runtime.cjs",
+    "icons": "node scripts/icons.mjs",
+    "notices": "node scripts/notices.mjs",
+    "test:desktop": "node scripts/electron-smoke.cjs",
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "start": "electron .",
+    "pack": "npm run build && electron-builder --win dir"
+  },
+  "dependencies": {
+    "selection-hook": "2.1.1"
+  },
+  "devDependencies": {
+    "@fontsource/noto-sans-sc": "^5.3.0",
+    "@playwright/test": "^1.51.0",
+    "@resvg/resvg-js": "^2.6.2",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "electron": "44.6.0",
+    "electron-builder": "26.15.6",
+    "esbuild": "^0.25.0",
+    "lucide-react": "^0.525.0",
+    "png-to-ico": "^3.0.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-markdown": "^10.0.0",
+    "remark-gfm": "^4.0.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0",
+    "vitest": "^5.0.3"
+  },
+  "build": {
+    "electronDist": "node_modules/electron/dist",
+    "appId": "io.lighttranslate.cherry",
+    "productName": "LightTranslate Cherry",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*",
+      "LICENSE",
+      "NOTICE.md",
+      "THIRD_PARTY_NOTICES.md",
+      "README.md"
+    ],
+    "extraFiles": [
+      {
+        "from": "LICENSE",
+        "to": "LICENSE-AGPL.txt"
+      },
+      {
+        "from": "NOTICE.md",
+        "to": "NOTICE.md"
+      },
+      {
+        "from": "THIRD_PARTY_NOTICES.md",
+        "to": "THIRD_PARTY_NOTICES.md"
+      },
+      {
+        "from": "README.md",
+        "to": "README.md"
+      }
+    ],
+    "asarUnpack": [
+      "node_modules/selection-hook/**/*"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": "dir",
+      "signAndEditExecutable": true
+    },
+    "npmRebuild": false
+  }
+}

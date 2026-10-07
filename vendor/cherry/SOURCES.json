@@ -1,0 +1,42 @@
+[
+  {
+    "path": "src/renderer/windows/selection/action/ActionWindow.tsx",
+    "sha256": "0ac0738dfaa312422b3b8530588b0f0aa74144b6dcf5f314591649fce67c2400",
+    "source": "https://github.com/CherryHQ/cherry-studio/blob/dd0767e1e7ecd8e37f44376382f35cb7ba04bea8/src/renderer/windows/selection/action/ActionWindow.tsx"
+  },
+  {
+    "path": "src/renderer/windows/selection/action/components/ActionTranslate.tsx",
+    "sha256": "557b0f9cfb9b38329986397982b861f99845ec13c6d85631b075cdb59140a7de",
+    "source": "https://github.com/CherryHQ/cherry-studio/blob/dd0767e1e7ecd8e37f44376382f35cb7ba04bea8/src/renderer/windows/selection/action/components/ActionTranslate.tsx"
+  },
+  {
+    "path": "src/renderer/windows/selection/action/components/WindowFooter.tsx",
+    "sha256": "cc683f2ada9966c10d4619cf69fb7984cc5c228254f486c1685c8e3c5b3e013a",
+    "source": "https://github.com/CherryHQ/cherry-studio/blob/dd0767e1e7ecd8e37f44376382f35cb7ba04bea8/src/renderer/windows/selection/action/components/WindowFooter.tsx"
+  },
+  {
+    "path": "src/renderer/components/selection/SelectionToolbarView.tsx",
+    "sha256": "361f06893b79c858f6b16a884127b254d8008ab09f89eb05c5cf240bb5108faf",
+    "source": "https://github.com/CherryHQ/cherry-studio/blob/dd0767e1e7ecd8e37f44376382f35cb7ba04bea8/src/renderer/components/selection/SelectionToolbarView.tsx"
+  },
+  {
+    "path": "src/main/services/selection/SelectionService.ts",
+    "sha256": "25326ad84dbf2d7f20ac083dc6cf409dea0b656f6c85a31d65c27457f659d49c",
+    "source": "https://github.com/CherryHQ/cherry-studio/blob/dd0767e1e7ecd8e37f44376382f35cb7ba04bea8/src/main/services/selection/SelectionService.ts"
+  },
+  {
+    "path": "src/main/services/selection/selectionConfig.ts",
+    "sha256": "9130ba7d4605e16d42caa80f7f161a0193335c4b6971e99d59189578bb1b7f72",
+    "source": "https://github.com/CherryHQ/cherry-studio/blob/dd0767e1e7ecd8e37f44376382f35cb7ba04bea8/src/main/services/selection/selectionConfig.ts"
+  },
+  {
+    "path": "packages/ui/src/styles/tokens/typography.css",
+    "sha256": "b251726b3e04239774550adbbdbe9394159993def4e516fe888e606b47a2665b",
+    "source": "https://github.com/CherryHQ/cherry-studio/blob/dd0767e1e7ecd8e37f44376382f35cb7ba04bea8/packages/ui/src/styles/tokens/typography.css"
+  },
+  {
+    "path": "packages/ui/src/styles/theme.css",
+    "sha256": "1396ab16958794dc38077ec26c82fe8b45e9457c0a2fa208e3a3a244b108f079",
+    "source": "https://github.com/CherryHQ/cherry-studio/blob/dd0767e1e7ecd8e37f44376382f35cb7ba04bea8/packages/ui/src/styles/theme.css"
+  }
+]
