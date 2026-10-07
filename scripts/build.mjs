@@ -1,6 +1,7 @@
 import { build as bundle } from 'esbuild';
 import { build as viteBuild } from 'vite';
 import { mkdir } from 'node:fs/promises';
+await import('./build-selection-copy.mjs');
 await mkdir('dist/main', { recursive: true });
 await bundle({ entryPoints: ['src/main/index.ts'], outfile: 'dist/main/index.cjs', platform: 'node', target: 'node22', format: 'cjs', bundle: true, external: ['electron', 'selection-hook'] });
 await bundle({ entryPoints: ['src/main/preload.ts'], outfile: 'dist/main/preload.cjs', platform: 'node', target: 'node22', format: 'cjs', bundle: true, external: ['electron'] });

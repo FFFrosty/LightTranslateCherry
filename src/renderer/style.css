@@ -82,14 +82,14 @@ select { min-width: 90px; max-width: 160px; height: 28px; border: 1px solid var(
 .manual-submit { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .manual-submit span { color: var(--subtle); font-size: 11px; }
 .primary-button { display: inline-flex; align-items: center; gap: 6px; background: var(--primary); color: white; padding: 6px 15px; border-radius: 5px; font-size: 13px; }
-.toolbar-container { display: flex; align-items: flex-start; flex-direction: column; }
-.selection-toolbar { display: inline-flex; flex-direction: row; align-items: stretch; height: 36px; margin: 2px 3px 5px; border: 0; border-radius: 10px; background: var(--surface); box-shadow: 0 2px 3px #3232321a; overflow: hidden; user-select: none; }
+.toolbar-container { display: flex; width: 100%; height: 100%; padding: var(--toolbar-inset, 3px); background: transparent; }
+.selection-toolbar { display: flex; flex-direction: row; align-items: stretch; width: 100%; height: 100%; min-width: 0; border: 0; border-radius: 10px; background: var(--surface); box-shadow: 0 1px 2px #32323226; overflow: hidden; user-select: none; }
 .toolbar-logo { display: flex; align-items: center; justify-content: center; padding: 0 6px 0 8px; border: .5px solid #00000014; border-right: 0; border-radius: 10px 0 0 10px; -webkit-app-region: drag; }
 .toolbar-logo img { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; }
-.toolbar-actions { display: flex; border: .5px solid #00000014; border-left: 0; border-radius: 0 10px 10px 0; -webkit-app-region: no-drag; }
-.toolbar-action { display: flex; align-items: center; justify-content: center; gap: 4px; height: 100%; padding: 0 12px 0 8px; background: transparent; transition: background .1s; }
+.toolbar-actions { display: flex; flex: 1; min-width: 0; border: .5px solid #00000014; border-left: 0; border-radius: 0 10px 10px 0; -webkit-app-region: no-drag; }
+.toolbar-action { display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%; height: 100%; padding: 0 10px 0 6px; background: transparent; transition: background .1s; }
 .toolbar-action:hover { background: var(--accent); color: var(--primary); }.toolbar-action-icon { display: flex; width: 16px; height: 16px; }.toolbar-action-title { font-size: 14px; line-height: 1.1; }
-.toolbar-error { font-size: 11px; background: #fff0f0; color: #aa3535; padding: 4px; border-radius: 4px; }
+.toolbar-error { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .startup-error, .startup-loading { padding: 20px; background: white; font-size: 13px; }.startup-error { color: #aa3535; }
 .spin { animation: spin 1s linear infinite; }@keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 380px) { .window-content { padding: 12px 10px 0; }.language-actions { margin-left: auto; }.detected-language span { max-width: 105px; }.window-controls { gap: 3px; }.profile-bar { flex-wrap: wrap; padding: 8px 10px 0; }.profile-bar span { flex-basis: 100%; } }

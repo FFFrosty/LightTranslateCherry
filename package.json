@@ -1,6 +1,6 @@
 {
   "name": "lighttranslate-cherry",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Independent selection translator adapted from Cherry Studio",
   "author": "LightTranslate contributors",
   "private": true,
@@ -81,6 +81,12 @@
       "target": "dir",
       "signAndEditExecutable": true
     },
-    "npmRebuild": false
+    "npmRebuild": false,
+    "extraResources": [
+      {
+        "to": "native",
+        "from": "dist/native"
+      }
+    ]
   }
 }

@@ -9,7 +9,7 @@ const { _electron: electron, expect } = require('playwright/test');
 const root = path.resolve(__dirname, '..');
 const artifacts = path.join(root, '.artifacts', 'electron-smoke');
 const report = { startedAt: new Date().toISOString(), checks: [], warnings: [], screenshots: [], passed: false };
-const firstText = 'Pinned source: A quiet morning brings a fresh opportunity to learn.';
+const firstText = 'Text-controlled  time series generation\nkeeps spaces, hyphens, and line breaks.';
 const secondText = 'Temporary source: This result should be replaced by the next translation.';
 const thirdText = 'Independent source: Closing another window must not stop this translation. ' + 'LongUnbrokenSource'.repeat(18);
 let app;
@@ -149,6 +149,14 @@ async function main() {
     firstContent = await completed(first);
     await screenshot(first, '01-result');
     return state;
+  });
+
+  await check('original panel preserves the exact captured source and whitespace', async () => {
+    await first.getByRole('button', { name: '显示原文', exact: true }).click();
+    assert.equal(await first.locator('.original-text').textContent(), firstText);
+    assert.equal(await first.locator('.original-text').evaluate(el => getComputedStyle(el).whiteSpace), 'pre-wrap');
+    await first.getByRole('button', { name: '隐藏原文', exact: true }).click();
+    await expect(first.locator('.original-text')).toHaveCount(0);
   });
 
   let second;

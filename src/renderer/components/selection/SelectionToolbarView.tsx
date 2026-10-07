@@ -7,6 +7,8 @@
  */
 import { Languages, Loader2 } from 'lucide-react'
 import { useState } from 'react'
+import type { CSSProperties } from 'react'
+import { TOOLBAR_METRICS } from '../../../shared/windowMetrics'
 import AppLogo from '../../../../assets/logo.svg'
 
 // Preserves the upstream stateless chrome split: the logo is the drag region;
@@ -23,13 +25,13 @@ export default function SelectionToolbarView() {
     finally { setBusy(false) }
   }
   return (
-    <div className="toolbar-container">
+    <div className="toolbar-container" style={{ '--toolbar-inset': `${TOOLBAR_METRICS.inset}px` } as CSSProperties}>
       <div data-ui="selection.toolbar" className="selection-toolbar">
         <div className="toolbar-logo"><img src={AppLogo} draggable={false} alt="LightTranslate" /></div>
         <div className="toolbar-actions">
-          <button type="button" className="toolbar-action" disabled={busy} onClick={() => void handleAction()} title="翻译选中文字" aria-label="翻译选中文字">
+          <button type="button" className="toolbar-action" disabled={busy} onClick={() => void handleAction()} title={error || '翻译选中文字'} aria-label={error || '翻译选中文字'}>
             <span className="toolbar-action-icon">{busy ? <Loader2 size={16} className="spin" /> : <Languages size={16} />}</span>
-            <span className="toolbar-action-title">翻译</span>
+            <span className="toolbar-action-title">{error ? '重试' : '翻译'}</span>
           </button>
         </div>
       </div>

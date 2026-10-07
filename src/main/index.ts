@@ -5,9 +5,12 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { InitialState, Preferences, TranslateRequest } from '../shared/api';
+import { TOOLBAR_METRICS } from '../shared/windowMetrics';
 import { ProfileStore } from './profile';
 import { translate, validLanguage } from './translation';
 import { fitBounds, replaceableResults } from './windowPolicy';
+import { copyEdgeSelection, probeEdgeSource } from './selectionCopy';
+import type { EdgeSource } from './selectionCopy';
 
 const demo = process.argv.includes('--demo');
 app.setName('LightTranslate Cherry');
@@ -23,7 +26,7 @@ try {
   for (const kind of ['manual', 'result'] as const) { const size = saved.sizes?.[kind]; if (Number.isFinite(size?.width) && Number.isFinite(size?.height)) sizes[kind] = { width: Math.max(360, Math.min(1800, size.width)), height: Math.max(280, Math.min(1400, size.height)) }; }
 } catch { /* First run or damaged non-secret preferences: use defaults. */ }
 function savePreferences() { try { writeFileSync(prefsFile, JSON.stringify({ ...preferences, sizes })); } catch { /* Window closing must remain available even on a read-only disk. */ } }
-type Managed = { window: BrowserWindow; state: Pick<InitialState, 'kind' | 'text'>; pinned: boolean; request?: { id: string; controller: AbortController }; timer?: ReturnType<typeof setTimeout> };
+type Managed = { window: BrowserWindow; state: Pick<InitialState, 'kind' | 'text'>; pinned: boolean; edgeSource?: Promise<EdgeSource | null>; request?: { id: string; controller: AbortController }; timer?: ReturnType<typeof setTimeout> };
 const windows = new Map<number, Managed>();
 let profile: ProfileStore;
 let tray: Tray | undefined;
@@ -33,9 +36,12 @@ let hookError = '';
 let toolbar: BrowserWindow | undefined;
 let ready = false;
 let quitting = false;
+let capturingSelection = false;
 const rendererFile = path.join(__dirname, '../renderer/index.html');
 const rendererUrl = pathToFileURL(rendererFile).toString();
 const iconPath = path.join(app.getAppPath(), 'assets', 'icon.png');
+const selectionCopyPath = app.isPackaged ? path.join(process.resourcesPath, 'native', 'SelectionCopy.exe') : path.join(app.getAppPath(), 'dist', 'native', 'SelectionCopy.exe');
+const isEdgeSelection = (data: TextSelectionData) => /^(?:.*[\\/])?msedge(?:\.exe)?$/i.test(data.programName);
 
 function ownSelection(data: TextSelectionData) {
   return !!BrowserWindow.getFocusedWindow() || data.programName.toLowerCase() === path.basename(process.execPath).toLowerCase() || /lighttranslate cherry/i.test(data.programName);
@@ -52,10 +58,10 @@ function activate(entry: Managed) {
 }
 function createWindow(kind: InitialState['kind'], text = '', point = screen.getCursorScreenPoint()): Managed {
   const isToolbar = kind === 'toolbar';
-  const size = isToolbar ? { width: 176, height: 48 } : sizes[kind];
+  const size = isToolbar ? { width: TOOLBAR_METRICS.width, height: TOOLBAR_METRICS.height } : sizes[kind];
   const area = screen.getDisplayNearestPoint(point).workArea;
   const bounds = fitBounds({ x: point.x + 10, y: point.y + 14 }, size, area);
-  const win = new BrowserWindow({ ...bounds, title: 'LightTranslate Cherry', icon: iconPath, show: false, frame: false, transparent: false, backgroundColor: '#fbfbfc', resizable: !isToolbar, maximizable: !isToolbar, minimizable: !isToolbar, minWidth: isToolbar ? 176 : 360, minHeight: isToolbar ? 48 : 280, skipTaskbar: isToolbar, focusable: !isToolbar, alwaysOnTop: isToolbar, webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, devTools: demo } });
+  const win = new BrowserWindow({ ...bounds, title: 'LightTranslate Cherry', icon: iconPath, show: false, frame: false, transparent: isToolbar, backgroundColor: isToolbar ? '#00000000' : '#fbfbfc', hasShadow: !isToolbar, thickFrame: !isToolbar, resizable: !isToolbar, maximizable: !isToolbar, minimizable: !isToolbar, minWidth: isToolbar ? TOOLBAR_METRICS.width : 360, minHeight: isToolbar ? TOOLBAR_METRICS.height : 280, skipTaskbar: isToolbar, focusable: !isToolbar, alwaysOnTop: isToolbar, webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, devTools: demo } });
   const entry: Managed = { window: win, state: { kind, text }, pinned: false };
   const contentId = win.webContents.id;
   windows.set(contentId, entry);
@@ -80,19 +86,39 @@ function openResult(text: string) {
   createWindow('result', text);
 }
 function processSelection(data: TextSelectionData) {
-  if (quitting || paused || ownSelection(data) || !data.text?.trim() || data.text.length > 12000) return;
+  if (quitting || paused || capturingSelection || ownSelection(data) || !data.text?.trim() || data.text.length > 12000) return;
   if (toolbar && !toolbar.isDestroyed()) toolbar.close();
   // Adapted from Cherry Studio SelectionService.processTextSelection:
   // native Windows coordinates are physical pixels; Electron uses DIP, then clamp to workArea.
   const raw = data.posLevel >= 3 ? data.endBottom : data.mousePosEnd;
   const valid = raw && Number.isFinite(raw.x) && Number.isFinite(raw.y) && raw.x !== -99999 && raw.y !== -99999;
   const point = valid ? screen.screenToDipPoint({ x: Math.round(raw.x), y: Math.round(raw.y) }) : screen.getCursorScreenPoint();
-  toolbar = createWindow('toolbar', data.text, point).window;
+  // Probe only window identity here. Clipboard access requires an explicit click.
+  const source = isEdgeSelection(data) ? probeEdgeSource(selectionCopyPath).catch(() => null) : undefined;
+  const entry = createWindow('toolbar', data.text, point);
+  entry.edgeSource = source;
+  toolbar = entry.window;
 }
-function captureSelection() {
-  if (quitting || !ready) return;
-  try { const selection = hook?.getCurrentSelection(); if (selection && !ownSelection(selection) && selection.text?.trim() && selection.text.length <= 12000) { openResult(selection.text); return; } } catch { /* Manual entry is the explicit fallback. */ }
-  showManual();
+async function selectedText(text: string, source?: Promise<EdgeSource | null>) {
+  if (!source) return text;
+  const identity = await source;
+  if (!identity) throw new Error('原窗口已切换或无法确认，请回到 Edge 重新划词。');
+  return copyEdgeSelection(selectionCopyPath, identity);
+}
+async function selectionFailure(error: unknown) {
+  if (quitting) return;
+  await dialog.showMessageBox({ type: 'info', title: '未能读取选中文字', message: '这次没有发起翻译。', detail: error instanceof Error ? error.message : '无法安全读取选区。请重新划词，或手动复制到翻译面板。', buttons: ['确定'], noLink: true }).catch(() => {});
+}
+async function captureSelection() {
+  if (quitting || !ready || capturingSelection) return;
+  capturingSelection = true;
+  try {
+    const selection = hook?.getCurrentSelection();
+    if (!selection || ownSelection(selection) || !selection.text?.trim() || selection.text.length > 12000) { showManual(); return; }
+    const text = await selectedText(selection.text, isEdgeSelection(selection) ? probeEdgeSource(selectionCopyPath) : undefined);
+    if (!quitting) openResult(checkedText(text));
+  } catch (error) { await selectionFailure(error); }
+  finally { capturingSelection = false; }
 }
 function updateTray() {
   if (quitting || !tray || tray.isDestroyed()) return;
@@ -135,7 +161,17 @@ function bind(channel: string, callback: (entry: Managed, ...args: any[]) => unk
 function setupIpc() {
   bind('lt:initial', entry => ({ ...entry.state, preferences, profile: demo ? { provider: '演示服务', model: 'Demo · 离线预览', configured: true } : profile.public }));
   bind('lt:open', (_entry, text) => openResult(checkedText(text)));
-  bind('lt:selection', entry => { if (entry.state.kind !== 'toolbar') throw new Error('请从划词工具条发起翻译。'); openResult(checkedText(entry.state.text)); });
+  bind('lt:selection', async entry => {
+    if (entry.state.kind !== 'toolbar' || toolbar !== entry.window || !entry.window.isVisible()) throw new Error('请重新划词后发起翻译。');
+    if (capturingSelection) return;
+    capturingSelection = true;
+    hideToolbar();
+    try {
+      const text = await selectedText(entry.state.text, entry.edgeSource);
+      if (!quitting && !entry.window.isDestroyed() && toolbar === entry.window) openResult(checkedText(text));
+    } catch (error) { await selectionFailure(error); }
+    finally { capturingSelection = false; }
+  });
   bind('lt:pin', (entry, value) => { if (typeof value !== 'boolean' || entry.state.kind === 'toolbar') throw new Error('置顶设置无效。'); entry.pinned = value; entry.window.setAlwaysOnTop(value); });
   bind('lt:opacity', (entry, value) => { if (typeof value !== 'number' || !Number.isFinite(value) || value < 0.35 || value > 1) throw new Error('透明度无效。'); entry.window.setOpacity(value); });
   bind('lt:minimize', entry => entry.window.minimize());
@@ -179,7 +215,8 @@ else {
     setupIpc();
     ready = true;
     tray = new Tray(nativeImage.createFromPath(iconPath)); tray.setToolTip('LightTranslate Cherry'); tray.on('double-click', showManual); updateTray();
-    showManual();
+    if (demo && process.argv.includes('--demo-toolbar')) toolbar = createWindow('toolbar', 'Toolbar demo selection.').window;
+    else showManual();
     if (!demo) { startHook(); if (!globalShortcut.register('Control+Alt+Y', captureSelection)) { hookError = '快捷键占用；请使用托盘菜单'; updateTray(); } }
   }).catch(() => { dialog.showErrorBox('LightTranslate Cherry 启动失败', '无法启动独立翻译工具。请检查程序资源与本地数据目录权限，然后重新打开。'); app.quit(); });
 }
