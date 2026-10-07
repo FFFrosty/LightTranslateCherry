@@ -12,9 +12,16 @@ using System.Windows.Forms;
 
 namespace LightTranslate.SelectionCopy
 {
-    internal sealed class SafeFailure : Exception
+    internal class SafeFailure : Exception
     {
         internal SafeFailure(string message) : base(message) { }
+    }
+
+    // A backup-capability failure permits ordinary explicit Ctrl+C. Concurrency,
+    // source-validation and clipboard-lock failures remain hard failures.
+    internal sealed class SnapshotUnavailable : SafeFailure
+    {
+        internal SnapshotUnavailable(string message) : base(message) { }
     }
 
     internal sealed class Source
@@ -113,14 +120,14 @@ namespace LightTranslate.SelectionCopy
                             if (Marshal.GetLastWin32Error() != 0) throw new SafeFailure("无法完整保存当前剪贴板，未执行复制。");
                             break;
                         }
-                        if (Unsupported(format)) throw new SafeFailure("当前剪贴板包含不支持安全恢复的格式。请手动复制并粘贴到翻译面板。");
+                        if (Unsupported(format)) throw new SnapshotUnavailable("当前剪贴板包含不支持安全恢复的格式。请手动复制并粘贴到翻译面板。");
                         IntPtr original = Native.GetClipboardData(format);
-                        if (original == IntPtr.Zero) throw new SafeFailure("无法完整保存当前剪贴板，未执行复制。");
+                        if (original == IntPtr.Zero) throw new SnapshotUnavailable("无法完整保存当前剪贴板，未执行复制。");
                         IntPtr copy;
                         if (format == Native.CF_BITMAP)
                         {
                             Native.Bitmap bitmap;
-                            if (Native.GetObject(original, Marshal.SizeOf(typeof(Native.Bitmap)), out bitmap) == 0) throw new SafeFailure("无法保存剪贴板图片，未执行复制。");
+                            if (Native.GetObject(original, Marshal.SizeOf(typeof(Native.Bitmap)), out bitmap) == 0) throw new SnapshotUnavailable("无法保存剪贴板图片，未执行复制。");
                             AddSize(ref total, Math.Max(Math.Abs((long)bitmap.WidthBytes) * Math.Abs((long)bitmap.Height), Math.Abs((long)bitmap.Width) * Math.Abs((long)bitmap.Height) * 4));
                             copy = Native.CopyImage(original, 0, 0, 0, 0x2000); // A new DIB-section handle, never LR_COPYRETURNORG.
                         }
@@ -133,16 +140,22 @@ namespace LightTranslate.SelectionCopy
                         else
                         {
                             ulong length = Native.GlobalSize(original).ToUInt64();
-                            if (length == 0 || length > (ulong)MaxBytes) throw new SafeFailure("剪贴板包含无法安全复制或过大的数据，未执行复制。");
+                            if (length == 0 || length > (ulong)MaxBytes) throw new SnapshotUnavailable("剪贴板包含无法安全复制或过大的数据，未执行复制。");
                             AddSize(ref total, (long)length);
                             copy = CopyGlobal(original, (int)length);
                         }
-                        if (copy == IntPtr.Zero) throw new SafeFailure("无法完整保存当前剪贴板，未执行复制。");
+                        if (copy == IntPtr.Zero) throw new SnapshotUnavailable("无法完整保存当前剪贴板，未执行复制。");
                         snapshot.entries.Add(new ClipboardEntry(format, copy));
                     }
                     if (Native.GetClipboardSequenceNumber() != snapshot.Sequence) throw new SafeFailure("剪贴板在保存期间发生变化，未执行复制。");
                 }
                 return snapshot;
+            }
+            catch (SnapshotUnavailable)
+            {
+                snapshot.Dispose();
+                if (Native.GetClipboardSequenceNumber() != snapshot.Sequence) throw new SafeFailure("剪贴板在保存期间发生变化，未执行复制。");
+                throw;
             }
             catch { snapshot.Dispose(); throw; }
         }
@@ -165,13 +178,13 @@ namespace LightTranslate.SelectionCopy
         }
         private static void AddSize(ref long total, long bytes)
         {
-            if (bytes <= 0 || bytes > MaxBytes || total > MaxBytes - bytes) throw new SafeFailure("当前剪贴板数据超过 64 MiB，未执行复制。请手动粘贴文字。");
+            if (bytes <= 0 || bytes > MaxBytes || total > MaxBytes - bytes) throw new SnapshotUnavailable("当前剪贴板数据超过 64 MiB，未执行复制。请手动粘贴文字。");
             total += bytes;
         }
         private static IntPtr CopyGlobal(IntPtr original, int size)
         {
             IntPtr source = Native.GlobalLock(original);
-            if (source == IntPtr.Zero) throw new SafeFailure("无法读取剪贴板格式，未执行复制。");
+            if (source == IntPtr.Zero) throw new SnapshotUnavailable("无法读取剪贴板格式，未执行复制。");
             IntPtr copy = IntPtr.Zero;
             try
             {
@@ -214,57 +227,77 @@ namespace LightTranslate.SelectionCopy
         {
             source.RequireCurrent();
             using (HiddenOwner owner = new HiddenOwner())
-            using (ClipboardSnapshot original = ClipboardSnapshot.Capture(owner.Handle))
             {
-                uint copiedSequence = original.Sequence;
-                bool observedCopy = false, restoreAttempted = false, copyMayHaveOccurred = false;
+                ClipboardSnapshot original = null;
+                uint beforeCopySequence;
                 try
                 {
-                    Stopwatch release = Stopwatch.StartNew();
-                    while (ModifiersDown())
-                    {
-                        source.RequireCurrent();
-                        if (release.ElapsedMilliseconds >= 600) throw new SafeFailure("请松开 Ctrl、Alt、Shift 和 Windows 键后重试。未执行复制。");
-                        Thread.Sleep(15);
-                    }
-                    source.RequireCurrent();
-                    if (Native.GetClipboardSequenceNumber() != original.Sequence) throw new SafeFailure("剪贴板已经变化，未执行复制。");
-                    SendCopy(ref copyMayHaveOccurred);
-                    Stopwatch deadline = Stopwatch.StartNew();
-                    while (deadline.ElapsedMilliseconds < 1200)
-                    {
-                        uint current = Native.GetClipboardSequenceNumber();
-                        if (current != original.Sequence) { copiedSequence = current; observedCopy = true; break; }
-                        source.RequireCurrent();
-                        Thread.Sleep(15);
-                    }
-                    if (!observedCopy) throw new SafeFailure("Edge 未提供新的复制文本，请重新选择，或手动复制后粘贴到翻译面板。");
+                    original = ClipboardSnapshot.Capture(owner.Handle);
+                    beforeCopySequence = original.Sequence;
+                }
+                catch (SnapshotUnavailable)
+                {
+                    // Capture disposed every partial backup before propagating this type.
+                    // Fall back to an ordinary explicit copy, leaving its new text in the
+                    // clipboard. Never restore an incomplete snapshot.
                     using (new ClipboardLock(owner.Handle, 350))
                     {
-                        if (Native.GetClipboardSequenceNumber() != copiedSequence || !source.OwnsClipboard()) throw new SafeFailure("剪贴板已被其他操作修改，未读取或覆盖其内容。");
-                        try
-                        {
-                            source.RequireCurrent();
-                            return ReadTextLocked();
-                        }
-                        finally { restoreAttempted = true; original.RestoreLocked(); }
+                        source.RequireCurrent();
+                        beforeCopySequence = Native.GetClipboardSequenceNumber();
                     }
                 }
-                finally
+                using (original)
                 {
-                    // A partial SendInput can still have sent C-down before reporting failure.
-                    // Only claim a fresh value attributable to the original Edge process.
-                    if (copyMayHaveOccurred && !observedCopy)
+                    uint copiedSequence = beforeCopySequence;
+                    bool observedCopy = false, restoreAttempted = false, copyMayHaveOccurred = false;
+                    try
                     {
-                        uint current = Native.GetClipboardSequenceNumber();
-                        if (current != original.Sequence && source.OwnsClipboard()) { copiedSequence = current; observedCopy = true; }
-                    }
-                    // Never overwrite a later user copy. The check and replacement are one locked operation.
-                    if (observedCopy && !restoreAttempted)
-                    {
+                        Stopwatch release = Stopwatch.StartNew();
+                        while (ModifiersDown())
+                        {
+                            source.RequireCurrent();
+                            if (release.ElapsedMilliseconds >= 600) throw new SafeFailure("请松开 Ctrl、Alt、Shift 和 Windows 键后重试。未执行复制。");
+                            Thread.Sleep(15);
+                        }
+                        source.RequireCurrent();
+                        if (Native.GetClipboardSequenceNumber() != beforeCopySequence) throw new SafeFailure("剪贴板已经变化，未执行复制。");
+                        SendCopy(ref copyMayHaveOccurred);
+                        Stopwatch deadline = Stopwatch.StartNew();
+                        while (deadline.ElapsedMilliseconds < 1200)
+                        {
+                            uint current = Native.GetClipboardSequenceNumber();
+                            if (current != beforeCopySequence) { copiedSequence = current; observedCopy = true; break; }
+                            source.RequireCurrent();
+                            Thread.Sleep(15);
+                        }
+                        if (!observedCopy) throw new SafeFailure("Edge 未提供新的复制文本，请重新选择，或手动复制后粘贴到翻译面板。");
                         using (new ClipboardLock(owner.Handle, 350))
                         {
-                            original.RestoreIfStillOwnedLocked(source, copiedSequence);
+                            if (Native.GetClipboardSequenceNumber() != copiedSequence || !source.OwnsClipboard()) throw new SafeFailure("剪贴板已被其他操作修改，未读取或覆盖其内容。");
+                            try
+                            {
+                                source.RequireCurrent();
+                                return ReadTextLocked();
+                            }
+                            finally { if (original != null) { restoreAttempted = true; original.RestoreLocked(); } }
+                        }
+                    }
+                    finally
+                    {
+                        // A partial SendInput can still have sent C-down before reporting failure.
+                        // Only claim a fresh value attributable to the original Edge process.
+                        if (original != null && copyMayHaveOccurred && !observedCopy)
+                        {
+                            uint current = Native.GetClipboardSequenceNumber();
+                            if (current != beforeCopySequence && source.OwnsClipboard()) { copiedSequence = current; observedCopy = true; }
+                        }
+                        // Never overwrite a later user copy. The check and replacement are one locked operation.
+                        if (original != null && observedCopy && !restoreAttempted)
+                        {
+                            using (new ClipboardLock(owner.Handle, 350))
+                            {
+                                original.RestoreIfStillOwnedLocked(source, copiedSequence);
+                            }
                         }
                     }
                 }

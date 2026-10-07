@@ -195,12 +195,36 @@ namespace LightTranslate.SelectionCopy.Tests
                     }
                     Track(); Pass("changed sequence or owner never overwrites newer clipboard");
 
-                    // A valid HGLOBAL carrying an OLE-private name must still be rejected.
-                    using (new ClipboardLock(owner.Handle, 350)) { Native.EmptyClipboard(); PutBytes(Native.RegisterClipboardFormat("Ole Private Data"), new byte[16]); }
+                    // OLE-private state cannot be restored; an explicit ordinary copy
+                    // must return fresh text and leave that new text on the clipboard.
+                    using (new ClipboardLock(owner.Handle, 350))
+                    {
+                        Native.EmptyClipboard();
+                        PutBytes(Native.CF_UNICODETEXT, Encoding.Unicode.GetBytes("old fixed OLE clipboard text\0"));
+                        PutBytes(Native.RegisterClipboardFormat("Ole Private Data"), new byte[16]);
+                    }
                     Track(); count = form.CopyCount; before = Native.GetClipboardSequenceNumber();
                     Dictionary<string, object> ole = await Invoke(CopyArgs(form));
-                    Assert(!(bool)ole["ok"] && form.CopyCount == count && Native.GetClipboardSequenceNumber() == before, "OLE process-local data refuses before copy");
-                    Pass("OLE-private HGLOBAL aborts before Ctrl+C");
+                    Track();
+                    Assert((bool)ole["ok"] && (string)ole["text"] == FixtureForm.Expected && form.CopyCount == count + 1, "OLE fallback copies exact fresh selection");
+                    Assert(Native.GetClipboardSequenceNumber() != before && Clipboard.GetText(TextDataFormat.UnicodeText) == FixtureForm.Expected, "OLE fallback keeps newly copied text");
+                    Pass("OLE-private backup unavailable: ordinary copy succeeds and retains new text");
+
+                    using (new ClipboardLock(owner.Handle, 350))
+                    {
+                        Native.EmptyClipboard();
+                        PutBytes(Native.CF_UNICODETEXT, Encoding.Unicode.GetBytes("old fixed timeout clipboard text\0"));
+                        PutBytes(Native.RegisterClipboardFormat("Ole Private Data"), new byte[16]);
+                    }
+                    Track(); count = form.CopyCount; before = Native.GetClipboardSequenceNumber(); form.IgnoreCopy = true;
+                    try
+                    {
+                        Dictionary<string, object> fallbackTimeout = await Invoke(CopyArgs(form));
+                        Assert(!(bool)fallbackTimeout["ok"] && !fallbackTimeout.ContainsKey("text") && form.CopyCount == count + 1, "fallback without fresh text fails after attempted copy");
+                        Assert(Native.GetClipboardSequenceNumber() == before && Clipboard.GetText(TextDataFormat.UnicodeText) == "old fixed timeout clipboard text", "fallback timeout preserves old content without returning it");
+                        Track(); Pass("fallback without fresh data times out and preserves old clipboard");
+                    }
+                    finally { form.IgnoreCopy = false; }
 
                     IntPtr privateHandle = Native.GlobalAlloc(2, (UIntPtr)8U);
                     try
@@ -208,8 +232,10 @@ namespace LightTranslate.SelectionCopy.Tests
                         using (new ClipboardLock(owner.Handle, 350)) { Native.EmptyClipboard(); Assert(Native.SetClipboardData(0x200, privateHandle) != IntPtr.Zero, "private fixture format set"); }
                         Track(); count = form.CopyCount; before = Native.GetClipboardSequenceNumber();
                         Dictionary<string, object> unsupported = await Invoke(CopyArgs(form));
-                        Assert(!(bool)unsupported["ok"] && form.CopyCount == count && Native.GetClipboardSequenceNumber() == before, "unsupported format refuses before copy");
-                        Pass("unsupported private format aborts before Ctrl+C");
+                        Track();
+                        Assert((bool)unsupported["ok"] && (string)unsupported["text"] == FixtureForm.Expected && form.CopyCount == count + 1, "private-format fallback copies fresh selection");
+                        Assert(Native.GetClipboardSequenceNumber() != before && Clipboard.GetText(TextDataFormat.UnicodeText) == FixtureForm.Expected, "private-format fallback retains new text");
+                        Pass("private-format backup unavailable: ordinary copy succeeds and retains new text");
                     }
                     finally { using (new ClipboardLock(owner.Handle, 350)) Native.EmptyClipboard(); Native.GlobalFree(privateHandle); Track(); }
                 }
