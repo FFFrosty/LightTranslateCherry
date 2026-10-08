@@ -137,8 +137,8 @@ function updateTray() {
 function startHook() {
   if (demo || paused || quitting) return;
   try {
+    const Hook = require('selection-hook') as SelectionHookConstructor;
     if (!hook) {
-      const Hook = require('selection-hook') as SelectionHookConstructor;
       hook = new Hook();
       hook.on('text-selection', processSelection);
       hook.on('error', () => { hookError = '监听失败（点击暂停后重试）'; updateTray(); });
@@ -146,8 +146,9 @@ function startHook() {
       hook.on('mouse-wheel', hideToolbar);
       hook.on('key-down', hideToolbar);
     }
-    // Only accessibility selection is read. Never fall back to the old clipboard.
-    if (!hook.start({ debug: false, enableClipboard: false, enableMouseMoveEvent: false })) throw new Error();
+    // Quark's PDF viewer may expose no accessibility selection despite supporting copy.
+    // Allow the library's copy fallback only for Quark; Edge keeps its explicit-click path.
+    if (!hook.start({ debug: false, enableClipboard: true, clipboardMode: Hook.FilterMode.INCLUDE_LIST, clipboardFilterList: ['quark.exe'], enableMouseMoveEvent: false })) throw new Error();
     hookError = '';
   } catch { hookError = '监听不可用（可使用手动翻译）'; }
   updateTray();
